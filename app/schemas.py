@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator, model_validato
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import pytz
+from pytz import all_timezones
 
 class EventBase(BaseModel):
     name: str = Field(...)
@@ -11,7 +12,7 @@ class EventBase(BaseModel):
     max_capacity: int
 
 class EventCreate(EventBase):
-    timezone: Optional[str] = "UTC"
+    timezone: Optional[str] = "Asia/Kolkata"
 
     @field_validator('name', 'location')
     def not_empty_str(cls, v):
@@ -20,15 +21,21 @@ class EventCreate(EventBase):
         return v
 
     @model_validator(mode="after")
-    def convert_times_to_utc(self):
-        tzname = self.timezone or "UTC"
+    def validate_timezone(self):
+        if self.timezone not in all_timezones:
+            raise ValueError(f"Invalid timezone: {self.timezone}")
+        return self
+
+    @model_validator(mode="after")
+    def convert_times_to_ist(self):
+        tzname = self.timezone or "Asia/Kolkata"
         tz = pytz.timezone(tzname)
         for attr in ["start_time", "end_time"]:
             dt = getattr(self, attr)
             if dt.tzinfo is None:
                 dt = tz.localize(dt)
-            dt_utc = dt.astimezone(pytz.UTC).replace(tzinfo=None)
-            setattr(self, attr, dt_utc)
+            dt_ist = dt.astimezone(tz).replace(tzinfo=None)
+            setattr(self, attr, dt_ist)
         return self
 
     @model_validator(mode="after")

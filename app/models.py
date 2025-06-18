@@ -15,6 +15,10 @@ class Event(Base):
 
     attendees = relationship("Attendee", back_populates="event", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        UniqueConstraint('name', name='uix_event_name'),
+    )
+
 class Attendee(Base):
     __tablename__ = "attendees"
 
