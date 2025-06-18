@@ -1,32 +1,40 @@
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.database import Base, engine, SessionLocal
+from app.database import Base, get_db
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
 from app.models import Event, Attendee
 from datetime import datetime, timedelta
 import pytz
+import asyncio
 
-client = TestClient(app)
+SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+engine = create_async_engine(SQLALCHEMY_DATABASE_URL, echo=True, future=True)
+TestingSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+    autocommit=False,
+)
 
-# Use a test database (in-memory SQLite)
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@pytest_asyncio.fixture(scope="module")
+async def async_client():
+    # Create tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async def override_get_db():
+        async with TestingSessionLocal() as session:
+            yield session
+    app.dependency_overrides[get_db] = override_get_db
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
 
-Base.metadata.create_all(bind=engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[app.get_db] = override_get_db
-
-def test_create_event():
+@pytest.mark.asyncio
+async def test_create_event(async_client):
     event_data = {
         "name": "Test Event",
         "location": "Test Location",
@@ -35,15 +43,15 @@ def test_create_event():
         "max_capacity": 10,
         "timezone": "UTC"
     }
-    response = client.post("/events", json=event_data)
+    response = await async_client.post("/events", json=event_data)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Test Event"
     assert data["location"] == "Test Location"
     assert data["max_capacity"] == 10
 
-
-def test_create_event_invalid_capacity():
+@pytest.mark.asyncio
+async def test_create_event_invalid_capacity(async_client):
     event_data = {
         "name": "Test Event",
         "location": "Test Location",
@@ -52,12 +60,11 @@ def test_create_event_invalid_capacity():
         "max_capacity": 0,
         "timezone": "UTC"
     }
-    response = client.post("/events", json=event_data)
+    response = await async_client.post("/events", json=event_data)
     assert response.status_code == 422
 
-
-def test_register_attendee():
-    # Create event first
+@pytest.mark.asyncio
+async def test_register_attendee(async_client):
     event_data = {
         "name": "Event2",
         "location": "Loc2",
@@ -66,18 +73,17 @@ def test_register_attendee():
         "max_capacity": 2,
         "timezone": "UTC"
     }
-    event_resp = client.post("/events", json=event_data)
+    event_resp = await async_client.post("/events", json=event_data)
     event_id = event_resp.json()["id"]
     attendee_data = {"name": "John Doe", "email": "john@example.com"}
-    response = client.post(f"/events/{event_id}/register", json=attendee_data)
+    response = await async_client.post(f"/events/{event_id}/register", json=attendee_data)
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "John Doe"
     assert data["email"] == "john@example.com"
 
-
-def test_register_attendee_duplicate():
-    # Create event first
+@pytest.mark.asyncio
+async def test_register_attendee_duplicate(async_client):
     event_data = {
         "name": "Event3",
         "location": "Loc3",
@@ -86,25 +92,24 @@ def test_register_attendee_duplicate():
         "max_capacity": 2,
         "timezone": "UTC"
     }
-    event_resp = client.post("/events", json=event_data)
+    event_resp = await async_client.post("/events", json=event_data)
     event_id = event_resp.json()["id"]
     attendee_data = {"name": "Jane Doe", "email": "jane@example.com"}
-    client.post(f"/events/{event_id}/register", json=attendee_data)
-    response = client.post(f"/events/{event_id}/register", json=attendee_data)
+    await async_client.post(f"/events/{event_id}/register", json=attendee_data)
+    response = await async_client.post(f"/events/{event_id}/register", json=attendee_data)
     assert response.status_code == 400
     assert "Duplicate" in response.json()["detail"] or "duplicate" in response.json()["detail"]
 
-
-def test_get_events_pagination():
-    response = client.get("/events?skip=0&limit=2")
+@pytest.mark.asyncio
+async def test_get_events_pagination(async_client):
+    response = await async_client.get("/events?skip=0&limit=2")
     assert response.status_code == 200
     data = response.json()
     assert "total" in data
     assert "events" in data
 
-
-def test_get_attendees_pagination():
-    # Create event and register attendees
+@pytest.mark.asyncio
+async def test_get_attendees_pagination(async_client):
     event_data = {
         "name": "Event4",
         "location": "Loc4",
@@ -113,12 +118,12 @@ def test_get_attendees_pagination():
         "max_capacity": 5,
         "timezone": "UTC"
     }
-    event_resp = client.post("/events", json=event_data)
+    event_resp = await async_client.post("/events", json=event_data)
     event_id = event_resp.json()["id"]
     for i in range(3):
         attendee_data = {"name": f"User{i}", "email": f"user{i}@example.com"}
-        client.post(f"/events/{event_id}/register", json=attendee_data)
-    response = client.get(f"/events/{event_id}/attendees?skip=0&limit=2")
+        await async_client.post(f"/events/{event_id}/register", json=attendee_data)
+    response = await async_client.get(f"/events/{event_id}/attendees?skip=0&limit=2")
     assert response.status_code == 200
     data = response.json()
     assert "total" in data

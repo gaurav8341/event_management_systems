@@ -5,6 +5,7 @@ from . import models, schemas
 from typing import List, Optional
 from datetime import datetime
 from pytz import timezone as pytz_timezone, UTC
+from sqlalchemy.orm import selectinload
 
 # Event CRUD
 
@@ -48,7 +49,11 @@ async def get_upcoming_events(db: AsyncSession, user_tz: str = "UTC", skip: int 
 # Attendee CRUD
 
 async def register_attendee(db: AsyncSession, event_id: int, attendee: schemas.AttendeeCreate) -> Optional[models.Attendee]:
-    result = await db.execute(select(models.Event).where(models.Event.id == event_id))
+    result = await db.execute(
+        select(models.Event)
+        .options(selectinload(models.Event.attendees))
+        .where(models.Event.id == event_id)
+    )
     event = result.scalar_one_or_none()
     if not event:
         return None

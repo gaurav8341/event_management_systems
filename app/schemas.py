@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import pytz
@@ -13,32 +13,31 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     timezone: Optional[str] = "UTC"
 
-    @validator('name', 'location', pre=True, always=True)
-    def not_empty_str(cls, v, field):
+    @field_validator('name', 'location')
+    def not_empty_str(cls, v):
         if not v or (isinstance(v, str) and not v.strip()):
-            raise ValueError(f"{field.name} must not be empty")
+            raise ValueError("Field must not be empty")
         return v
 
-    @validator('start_time', 'end_time', pre=True)
-    def convert_to_utc(cls, value, values, field):
-        tzname = values.get('timezone', 'UTC')
+    @model_validator(mode="after")
+    def convert_times_to_utc(self):
+        tzname = self.timezone or "UTC"
         tz = pytz.timezone(tzname)
-        if value.tzinfo is None:
-            # Assume naive datetime is in the user's timezone
-            value = tz.localize(value)
-        # Convert to UTC
-        return value.astimezone(pytz.UTC).replace(tzinfo=None)
+        for attr in ["start_time", "end_time"]:
+            dt = getattr(self, attr)
+            if dt.tzinfo is None:
+                dt = tz.localize(dt)
+            dt_utc = dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            setattr(self, attr, dt_utc)
+        return self
 
-    @root_validator
-    def check_times_and_capacity(cls, values):
-        start = values.get('start_time')
-        end = values.get('end_time')
-        max_capacity = values.get('max_capacity')
-        if start and end and start >= end:
+    @model_validator(mode="after")
+    def check_times_and_capacity(self):
+        if self.start_time and self.end_time and self.start_time >= self.end_time:
             raise ValueError('start_time must be before end_time')
-        if max_capacity is not None and max_capacity <= 0:
+        if self.max_capacity is not None and self.max_capacity <= 0:
             raise ValueError('max_capacity must be greater than 0')
-        return values
+        return self
 
 class EventOut(EventBase):
     id: int
@@ -56,10 +55,10 @@ class AttendeeBase(BaseModel):
     email: EmailStr
 
 class AttendeeCreate(AttendeeBase):
-    @validator('name', 'email', pre=True, always=True)
-    def not_empty_str(cls, v, field):
+    @field_validator('name', 'email')
+    def not_empty_str(cls, v):
         if not v or (isinstance(v, str) and not v.strip()):
-            raise ValueError(f"{field.name} must not be empty")
+            raise ValueError("Field must not be empty")
         return v
 
 class AttendeeOut(AttendeeBase):
