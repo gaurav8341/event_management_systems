@@ -96,6 +96,169 @@ This project uses Alembic for database migrations. To manage schema changes:
 
 Repeat steps 2 and 3 whenever you change your models.
 
+## API Documentation
+
+### 1. Create Event:
+
+**cURL Query**:
+
+```sh
+curl --location 'http://localhost:8000/events' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data '{
+  "name": "WebFest",
+  "location": "India",
+  "start_time": "2025-08-15T16:18:36.333Z",
+  "end_time": "2025-08-20T16:18:36.333Z",
+  "max_capacity": 100,
+  "timezone": "Asia/Kolkata"
+}'
+```
+
+
+**1. Unsuccessfull Response**:
+
+**Code**: 400
+**Response**:
+```json
+{
+    "detail": "Event with name 'WebFest' already exists."
+}
+```
+
+**2. Successfull Response**:
+
+**Code**: 200
+**Response**:
+```json
+{
+    "name": "Webfest",
+    "location": "est",
+    "start_time": "2025-08-15T21:48:36.333000",
+    "end_time": "2025-08-20T21:48:36.333000",
+    "max_capacity": 100,
+    "id": 2
+}
+```
+
+### 2. Register for Events:
+
+**cURL Query**:
+
+```sh
+curl --location 'http://localhost:8000/events/1/register' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data-raw '{
+  "name": "qwerty",
+  "email": "abc.asd@gmail.com"
+}'
+```
+
+**1. Unsuccessfull Response**:
+
+**Code**: 400
+**Response**:
+```json
+{
+    "detail": "Duplicate registration or event not found."
+}
+```
+
+**2. Successfull Response**:
+
+**Code**: 200
+**Response**:
+```json
+{
+    "name": "qwerty",
+    "email": "abc1.asd@gmail.com",
+    "id": 3,
+    "event_id": 1
+}
+```
+
+### 3. List all events:
+
+**cURL Query**:
+```sh
+curl --location 'http://localhost:8000/events?timezone=Asia%2FDhaka&skip=0&limit=100' \
+--header 'Accept: application/json'
+```
+
+**Response**:
+```json
+{
+    "total": 2,
+    "skip": 0,
+    "limit": 100,
+    "events": [
+        {
+            "id": 1,
+            "name": "ut exercitation Ut",
+            "location": "est",
+            "start_time": "2025-08-16T03:48:36.333000+06:00",
+            "end_time": "2025-08-21T03:48:36.333000+06:00",
+            "max_capacity": 100
+        },
+        {
+            "id": 2,
+            "name": "Webfest",
+            "location": "est",
+            "start_time": "2025-08-16T03:48:36.333000+06:00",
+            "end_time": "2025-08-21T03:48:36.333000+06:00",
+            "max_capacity": 100
+        }
+    ]
+}
+```
+
+### 4. List all attendees for event
+
+**cURL Query**:
+```sh
+curl --location 'http://localhost:8000/events/1/attendees?skip=0&limit=100&timezone=UTC' \
+--header 'Accept: application/json'
+```
+
+**Response**:
+```json
+{
+    "total": 3,
+    "skip": 0,
+    "limit": 100,
+    "attendees": [
+        {
+            "id": 2,
+            "name": "qwerty",
+            "email": "abc.asd@gmail.com",
+            "event_id": 1,
+            "event_start_time": "2025-08-15T21:48:36.333000+00:00",
+            "event_end_time": "2025-08-20T21:48:36.333000+00:00"
+        },
+        {
+            "id": 3,
+            "name": "qwerty",
+            "email": "abc1.asd@gmail.com",
+            "event_id": 1,
+            "event_start_time": "2025-08-15T21:48:36.333000+00:00",
+            "event_end_time": "2025-08-20T21:48:36.333000+00:00"
+        },
+        {
+            "id": 1,
+            "name": "dolor",
+            "email": "cq12cqMMTR@zfhjju.xnln",
+            "event_id": 1,
+            "event_start_time": "2025-08-15T21:48:36.333000+00:00",
+            "event_end_time": "2025-08-20T21:48:36.333000+00:00"
+        }
+    ]
+}
+```
+
+
+
 ## Deployment
 - Ready for Dockerization and cloud deployment
 - Can be configured for PostgreSQL by changing the DB URL in `app/database.py`

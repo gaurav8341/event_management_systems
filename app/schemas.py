@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import pytz
 from pytz import all_timezones
+from fastapi import HTTPException
 
 class EventBase(BaseModel):
     name: str = Field(...)
@@ -17,13 +18,13 @@ class EventCreate(EventBase):
     @field_validator('name', 'location')
     def not_empty_str(cls, v):
         if not v or (isinstance(v, str) and not v.strip()):
-            raise ValueError("Field must not be empty")
+            raise HTTPException(status_code=400, detail="Field must not be empty")
         return v
 
     @model_validator(mode="after")
     def validate_timezone(self):
         if self.timezone not in all_timezones:
-            raise ValueError(f"Invalid timezone: {self.timezone}")
+            raise HTTPException(status_code=400, detail=f"Invalid timezone: {self.timezone}")
         return self
 
     @model_validator(mode="after")
@@ -41,9 +42,11 @@ class EventCreate(EventBase):
     @model_validator(mode="after")
     def check_times_and_capacity(self):
         if self.start_time and self.end_time and self.start_time >= self.end_time:
-            raise ValueError('start_time must be before end_time')
+            raise HTTPException(status_code=400, detail="start_time must be before end_time")
         if self.max_capacity is not None and self.max_capacity <= 0:
-            raise ValueError('max_capacity must be greater than 0')
+            raise HTTPException(status_code=400, detail="max_capacity must be greater than 0")
+        if self.start_time < datetime.now():
+            raise HTTPException(status_code=400, detail="start_time cant be in past.")
         return self
 
 class EventOut(EventBase):
@@ -65,7 +68,8 @@ class AttendeeCreate(AttendeeBase):
     @field_validator('name', 'email')
     def not_empty_str(cls, v):
         if not v or (isinstance(v, str) and not v.strip()):
-            raise ValueError("Field must not be empty")
+            raise HTTPException(status_code=400, detail="Field must not be empty")
+
         return v
 
 class AttendeeOut(AttendeeBase):
